@@ -1,0 +1,8 @@
+.DS_Store
+/.vscode/
+*.acf
+*.acb
+*.awb
+*.hca
+*.wav
+*.json

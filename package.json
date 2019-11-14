@@ -1,0 +1,19 @@
+{
+  "name": "critools",
+  "version": "1.0.0",
+  "description": "JavaScript tools for extract audio from game file",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kohos/CriTools.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/kohos/CriTools/issues"
+  },
+  "homepage": "https://github.com/kohos/CriTools#readme"
+}
