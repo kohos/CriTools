@@ -376,7 +376,7 @@ async function viewUtf(acbPath, outputPath) {
   console.log(`Parsing ${pathInfo.base}...`);
   const buffer = await readFile(acbPath);
   const utf = parseUtf(buffer, true);
-  if (utf.AwbFile && utf.AwbFile.length > 0x20) utf.AwbFile = utf.AwbFile.substring(0, 0x20);
+  if (utf && utf.AwbFile && utf.AwbFile.length > 0x20) utf.AwbFile = utf.AwbFile.substring(0, 0x20);
   console.log(`Writing ${path.parse(outputPath).base}...`);
   await writeFile(outputPath, JSON.stringify(utf, null, 2));
 }
