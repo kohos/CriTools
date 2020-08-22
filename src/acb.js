@@ -111,90 +111,101 @@ async function mixAcb(acbPath, key, wavDir, mode, skip) {
   for (let i = 0; i < acb.CueTable.length; i++) {
     const Cue = acb.CueTable[i];
     let samplingRate = 0, channelCount = 0;
-    if (Cue.ReferenceType !== 3) debugger;
-    const Sequence = acb.SequenceTable[Cue.ReferenceIndex];
-    // Sequence.Type: 0 - Polyphonic, 1 - Sequential, Random, Random No Repeat, Switch, Shuffle Cue, Combo Sequential, Track Transition by Selector
-    const timeline = [];
-    let size = 0;
-    for (let j = 0; j < Sequence.NumTracks; j++) {
-      const index = Sequence.TrackIndex.readUInt16BE(j * 2);
-      const Track = acb.TrackTable[index];
-      const TrackEvent = acb.TrackEventTable[Track.EventIndex];
-      const track = await parseCommand(acb, TrackEvent.Command, key);
-      if (track.samplingRate) {
-        if (samplingRate === 0) samplingRate = track.samplingRate; else if (track.samplingRate !== samplingRate) throw new Error(`SamplingRate Different`);
-      }
-      if (track.channelCount) {
-        if (channelCount === 0) channelCount = track.channelCount; else if (track.channelCount !== channelCount) throw new Error(`ChannelCount Different`);
-      }
-      let time = 0;
-      for (let k = 0; k < track.commands.length; k++) {
-        const command = track.commands[k];
-        switch (command.type) {
-          case 0:
-            let m = 0;
-            while (m < timeline.length && time > timeline[m].time) m++;
-            let offset = Math.round(time * samplingRate * channelCount / 1000);
-            if (offset % channelCount !== 0) offset += channelCount - offset % channelCount;
-            if (m == timeline.length) timeline.push({ time, offset, pcmDatas: [] });
-            const last = timeline[m].offset + command.pcmData.length;
-            if (last > size) size = last;
-            timeline[m].pcmDatas.push(command.pcmData);
-            break;
-          case 1:
-            time += command.offset;
-            break;
+    if (Cue.ReferenceType === 1) {
+      const Waveform = acb.WaveformTable[Cue.ReferenceIndex];
+      const isMemory = Waveform.Streaming === 0;
+      const hcaBuffer = isMemory ? acb.memoryHcas[Waveform.MemoryAwbId] : acb.streamHcas[Waveform.StreamAwbPortNo][Waveform.StreamAwbId];
+      const awbKey = isMemory ? acb.memoryHcas.config.key : acb.streamHcas[Waveform.StreamAwbPortNo].config.key;
+      const name = cueNameMap[i] + '.wav';
+      const wavPath = path.join(wavDir, name);
+      await hca.decodeHcaToWav(hcaBuffer, key, awbKey, wavPath, 1, mode);
+    } else if (Cue.ReferenceType === 2) {
+      console.log(`Unsupport ReferenceType: ${Cue.ReferenceType}`);
+    } else if (Cue.ReferenceType === 3) {
+      const Sequence = acb.SequenceTable[Cue.ReferenceIndex];
+      // Sequence.Type: 0 - Polyphonic, 1 - Sequential, Random, Random No Repeat, Switch, Shuffle Cue, Combo Sequential, Track Transition by Selector
+      const timeline = [];
+      let size = 0;
+      for (let j = 0; j < Sequence.NumTracks; j++) {
+        const index = Sequence.TrackIndex.readUInt16BE(j * 2);
+        const Track = acb.TrackTable[index];
+        const TrackEvent = acb.TrackEventTable[Track.EventIndex];
+        const track = await parseCommand(acb, TrackEvent.Command, key);
+        if (track.samplingRate) {
+          if (samplingRate === 0) samplingRate = track.samplingRate; else if (track.samplingRate !== samplingRate) throw new Error(`SamplingRate Different`);
         }
-      }
-    }
-    if (size === 0) continue;
-    const pcmData = new Float32Array(size);
-    if (timeline.length === 0) continue;
-    timeline.push({ offset: 0xFFFFFFFF, pcmDatas: [] });
-    const runnings = [];
-    let now = timeline[0].offset;
-    for (let i = 0; i < timeline.length; i++) {
-      const wave = timeline[i];
-      const len = wave.offset - now;
-      const pcmDatas = [];
-      let k = 0;
-      while (k < runnings.length) {
-        const running = runnings[k];
-        let end = running.offset + len;
-        if (end >= running.pcmData.length) {
-          pcmDatas.push(running.pcmData.slice(running.offset));
-          runnings.splice(k, 1);
-        } else {
-          pcmDatas.push(running.pcmData.slice(running.offset, end));
-          running.offset = end;
-          k++;
+        if (track.channelCount) {
+          if (channelCount === 0) channelCount = track.channelCount; else if (track.channelCount !== channelCount) throw new Error(`ChannelCount Different`);
         }
-      }
-      for (let j = 0; j < wave.pcmDatas.length; j++) {
-        runnings.push({
-          pcmData: wave.pcmDatas[j],
-          offset: 0
-        });
-      }
-      k = now;
-      if (pcmDatas.length > 0) {
-        let max = 0;
-        for (let j = 1; j < pcmDatas.length; j++) if (pcmDatas[j].length > max) max = j;
-        for (let j = 0; j < pcmDatas[max].length; j++) {
-          let f = 0;
-          for (let m = 0; m < pcmDatas.length; m++) {
-            if (j < pcmDatas[m].length) f += pcmDatas[m][j];
+        let time = 0;
+        for (let k = 0; k < track.commands.length; k++) {
+          const command = track.commands[k];
+          switch (command.type) {
+            case 0:
+              let m = 0;
+              while (m < timeline.length && time > timeline[m].time) m++;
+              let offset = Math.round(time * samplingRate * channelCount / 1000);
+              if (offset % channelCount !== 0) offset += channelCount - offset % channelCount;
+              if (m == timeline.length) timeline.push({ time, offset, pcmDatas: [] });
+              const last = timeline[m].offset + command.pcmData.length;
+              if (last > size) size = last;
+              timeline[m].pcmDatas.push(command.pcmData);
+              break;
+            case 1:
+              time += command.offset;
+              break;
           }
-          if (f > 1.0) f = 1.0;
-          if (f < -1.0) f = -1.0;
-          pcmData[k++] = f;
         }
       }
-      now = wave.offset;
+      if (size === 0) continue;
+      const pcmData = new Float32Array(size);
+      if (timeline.length === 0) continue;
+      timeline.push({ offset: 0xFFFFFFFF, pcmDatas: [] });
+      const runnings = [];
+      let now = timeline[0].offset;
+      for (let i = 0; i < timeline.length; i++) {
+        const wave = timeline[i];
+        const len = wave.offset - now;
+        const pcmDatas = [];
+        let k = 0;
+        while (k < runnings.length) {
+          const running = runnings[k];
+          let end = running.offset + len;
+          if (end >= running.pcmData.length) {
+            pcmDatas.push(running.pcmData.slice(running.offset));
+            runnings.splice(k, 1);
+          } else {
+            pcmDatas.push(running.pcmData.slice(running.offset, end));
+            running.offset = end;
+            k++;
+          }
+        }
+        for (let j = 0; j < wave.pcmDatas.length; j++) {
+          runnings.push({
+            pcmData: wave.pcmDatas[j],
+            offset: 0
+          });
+        }
+        k = now;
+        if (pcmDatas.length > 0) {
+          let max = 0;
+          for (let j = 1; j < pcmDatas.length; j++) if (pcmDatas[j].length > max) max = j;
+          for (let j = 0; j < pcmDatas[max].length; j++) {
+            let f = 0;
+            for (let m = 0; m < pcmDatas.length; m++) {
+              if (j < pcmDatas[m].length) f += pcmDatas[m][j];
+            }
+            if (f > 1.0) f = 1.0;
+            if (f < -1.0) f = -1.0;
+            pcmData[k++] = f;
+          }
+        }
+        now = wave.offset;
+      }
+      const wavPath = path.join(wavDir, cueNameMap[i] + '.wav');
+      console.log(`Writing ${cueNameMap[i] + '.wav'}...`);
+      await hca.writeWavFile(wavPath, mode, channelCount, samplingRate, pcmData);
     }
-    const wavPath = path.join(wavDir, cueNameMap[i] + '.wav');
-    console.log(`Writing ${cueNameMap[i] + '.wav'}...`);
-    await hca.writeWavFile(wavPath, mode, channelCount, samplingRate, pcmData);
   }
 }
 exports.mixAcb = mixAcb;
